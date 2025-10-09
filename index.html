@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشغل قنوات تلفاز عبر الإنترنت</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> <!-- دعم HLS -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
+        #notification {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, 0);
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(15px);
+            color: #fff;
+            padding: 25px 40px;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            border: 2px solid #ff0000;
+            border-radius: 15px;
+            display: none;
+            z-index: 1001;
+            min-width: 350px;
+            animation: fadeInOut 2s ease-in-out;
+        }
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translate(-50%, -10px); }
+            50% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        #channels-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            backdrop-filter: blur(20px);
+            color: #fff;
+            padding: 25px;
+            font-size: 16px;
+            text-align: center;
+            border: 2px solid #555;
+            border-radius: 15px;
+            display: none;
+            z-index: 1001;
+            max-width: 600px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        #menu-channels {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .channel-item {
+            padding: 20px;
+            background: linear-gradient(135deg, #333, #444);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 10px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .channel-item:hover, .channel-item.selected {
+            background: linear-gradient(135deg, #ff0000, #cc0000);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(255,0,0,0.3);
+        }
+        .channel-number {
+            font-size: 24px;
+            color: #ff0000;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video-player" autoplay playsinline></video>
+        <div id="notification"></div>
+        <div id="channels-menu">
+            <h3 style="margin: 0 0 15px 0; color: #ff0000;">اختر قناة:</h3>
+            <div id="menu-channels"></div>
+        </div>
+    </div>
+
+    <script>
+        // القنوات مع روابط تجريبية صالحة (غيّرها بروابطك؛ الروابط الأصلية قد تحتاج VPN)
+        const channelsData = [
+            { id: 1, name: 'الجزيرة', stream: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8' }, // تجريبي؛ غيّر إلى: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8'
+            { id: 2, name: 'الجزيرة مباشر', stream: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8' }, // غيّر إلى: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8'
+            { id: 3, name: 'عمان', stream: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8' }, // غيّر إلى: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8'
+            { id: 4, name: 'العربي', stream: 'https://av.alarabiya.net/alarabiapublish/alarabiya_720p/chunks.m3u8' }, // غيّر إلى: 'https://d1j4r34gq3qw9y.cloudfront.net/alarabiya/playlist.m3u8' (من مصادر 2025)
+            { id: 5, name: 'الاستقامة', stream: 'https://jmc-live.ercdn.net/alistiqama/alistiqama.m3u8' }, // هذا يعمل عادة
+            { id: 6, name: 'سبيستون', stream: 'https://shd-gcp-live.edgenextcdn.net/live/bitmovin-spacetoon/d8382fb9ab4b2307058f12c7ea90db54/index.m3u8' } // هذا صالح
+        ];
+
+        const channels = channelsData.filter(c => c.stream && c.stream.trim() !== '');
+
+        const video = document.getElementById('video-player');
+        const videoContainer = document.getElementById('video-container');
+        const notification = document.getElementById('notification');
+        const channelsMenu = document.getElementById('channels-menu');
+        const menuChannels = document.getElementById('menu-channels');
+        let currentChannelIndex = 0;
+        let inputBuffer = '';
+        let isZeroMode = false;
+        let selectionTimeout;
+        let hls; // لـ hls.js
+
+        // fullscreen
+        function enterFullscreen() {
+            if (videoContainer.requestFullscreen) videoContainer.requestFullscreen();
+            else if (videoContainer.webkitRequestFullscreen) videoContainer.webkitRequestFullscreen();
+            else if (videoContainer.msRequestFullscreen) videoContainer.msRequestFullscreen();
+            if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+        }
+
+        // بناء القائمة
+        channels.forEach((channel, index) => {
+            const div = document.createElement('div');
+            div.className = 'channel-item';
+            div.innerHTML = `<div class="channel-number">${channel.id}</div>${channel.name}`;
+            div.onclick = () => selectChannelInMenu(index);
+            menuChannels.appendChild(div);
+        });
+
+        // إشعار
+        function showNotification(message) {
+            notification.textContent = message;
+            notification.style.display = 'block';
+            setTimeout(() => notification.style.display = 'none', 2000);
+        }
+
+        // عرض قائمة 0
+        function showChannelsMenu() {
+            channelsMenu.style.display = 'block';
+            isZeroMode = true;
+        }
+
+        // إخفاء قائمة
+        function hideChannelsMenu() {
+            channelsMenu.style.display = 'none';
+            isZeroMode = false;
+            clearTimeout(selectionTimeout);
+        }
+
+        // اختيار في القائمة
+        function selectChannelInMenu(index) {
+            const items = document.querySelectorAll('.channel-item');
+            items.forEach((item, i) => item.classList.toggle('selected', i === index));
+            currentChannelIndex = index;
+            inputBuffer = channels[index].id.toString();
+            clearTimeout(selectionTimeout);
+            selectionTimeout = setTimeout(() => {
+                switchToChannel(index, true);
+                hideChannelsMenu();
+                inputBuffer = '';
+            }, 3000);
+        }
+
+        // تشغيل مع hls.js
+        function switchToChannel(index, fromZeroMode = false) {
+            const channel = channels[index];
+            if (channel) {
+                console.log('محاولة تشغيل:', channel.name, channel.stream); // للتشخيص
+                if (Hls.isSupported()) {
+                    if (hls) hls.destroy();
+                    hls = new Hls();
+                    hls.loadSource(channel.stream);
+                    hls.attachMedia(video);
+                    video.muted = false; // تفعيل الصوت
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        console.error('خطأ HLS:', data); // عرض الأخطاء
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = channel.stream;
+                    video.muted = false; // تفعيل الصوت
+                    video.addEventListener('loadedmetadata', () => video.play());
+                }
+                video.play().catch(e => console.error('خطأ التشغيل:', e));
+                currentChannelIndex = index;
+                showNotification(`تم التنقل إلى ${channel.name}`);
+                video.addEventListener('loadeddata', enterFullscreen, { once: true });
+            }
+        }
+
+        // التنقل
+        document.addEventListener('keydown', (e) => {
+            if (isZeroMode) {
+                if (/[1-6]/.test(e.key)) {
+                    inputBuffer += e.key;
+                    const channelNum = parseInt(inputBuffer);
+                    const channel = channels.find(c => c.id === channelNum);
+                    if (channel) {
+                        const index = channels.indexOf(channel);
+                        selectChannelInMenu(index);
+                    }
+                    e.preventDefault();
+                } else if (e.key === 'Escape') {
+                    hideChannelsMenu();
+                    inputBuffer = '';
+                    e.preventDefault();
+                }
+            } else {
+                if (e.key === 'ArrowRight') {
+                    currentChannelIndex = (currentChannelIndex + 1) % channels.length;
+                    switchToChannel(currentChannelIndex, false);
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    currentChannelIndex = (currentChannelIndex - 1 + channels.length) % channels.length;
+                    switchToChannel(currentChannelIndex, false);
+                    e.preventDefault();
+                } else if (e.key === 'Enter') {
+                    switchToChannel(currentChannelIndex, false);
+                    e.preventDefault();
+                } else if (e.key === '0') {
+                    inputBuffer = '0';
+                    showChannelsMenu();
+                    e.preventDefault();
+                } else if (/[1-6]/.test(e.key)) {
+                    inputBuffer += e.key;
+                    setTimeout(() => {
+                        const channelNum = parseInt(inputBuffer);
+                        const channel = channels.find(c => c.id === channelNum);
+                        if (channel) {
+                            const index = channels.indexOf(channel);
+                            switchToChannel(index, false);
+                        }
+                        inputBuffer = '';
+                    }, 2000);
+                    e.preventDefault();
+                }
+            }
+            if (e.key === 'Escape') {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        // بدء بالأولى
+        if (channels.length > 0) switchToChannel(0, false);
+
+        // منع النقر
+        video.addEventListener('click', e => e.preventDefault());
+    </script>
+</body>
+</html>
