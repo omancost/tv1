@@ -110,12 +110,12 @@
     </div>
 
     <script>
-        // القنوات مع روابط تجريبية صالحة (غيّرها بروابطك؛ الروابط الأصلية قد تحتاج VPN)
+        // القنوات مع روابط m3u8 صالحة (غيّرها بروابطك؛ الروابط الأصلية قد تحتاج VPN)
         const channelsData = [
             { id: 1, name: 'الجزيرة', stream: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8' },
             { id: 2, name: 'الجزيرة مباشر', stream: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8' },
             { id: 3, name: 'عمان', stream: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8' },
-            { id: 4, name: 'العربي', stream: 'https://live.kwikmotion.com/alaraby1live/alaraby_abr/manifest.mpd' },
+            { id: 4, name: 'العربي', stream: 'https://alarabyta.cdn.octivid.com/alaraby/smil:alaraby.stream.smil/chunklist.m3u8' },
             { id: 5, name: 'الاستقامة', stream: 'https://jmc-live.ercdn.net/alistiqama/alistiqama.m3u8' },
             { id: 6, name: 'سبيستون', stream: 'https://shd-gcp-live.edgenextcdn.net/live/bitmovin-spacetoon/d8382fb9ab4b2307058f12c7ea90db54/index.m3u8' }
         ];
@@ -184,7 +184,7 @@
             }, 3000);
         }
 
-        // تشغيل مع hls.js وإزالة الترجمة
+        // تشغيل مع hls.js
         function switchToChannel(index, fromZeroMode = false) {
             const channel = channels[index];
             if (channel) {
@@ -198,28 +198,10 @@
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         console.error('خطأ HLS:', data); // عرض الأخطاء
                     });
-                    // إزالة الترجمة
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        const textTracks = video.textTracks;
-                        if (textTracks) {
-                            for (let i = 0; i < textTracks.length; i++) {
-                                textTracks[i].mode = 'disabled';
-                            }
-                        }
-                    });
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = channel.stream;
                     video.muted = false; // تفعيل الصوت
-                    video.addEventListener('loadedmetadata', () => {
-                        video.play();
-                        // إزالة الترجمة
-                        const textTracks = video.textTracks;
-                        if (textTracks) {
-                            for (let i = 0; i < textTracks.length; i++) {
-                                textTracks[i].mode = 'disabled';
-                            }
-                        }
-                    });
+                    video.addEventListener('loadedmetadata', () => video.play());
                 }
                 video.play().catch(e => console.error('خطأ التشغيل:', e));
                 currentChannelIndex = index;
