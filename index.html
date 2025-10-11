@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>مشغل قنوات تلفاز عبر الإنترنت</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> <!-- دعم HLS -->
-    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script> <!-- دعم DASH لـ MPD -->
     <style>
         body {
             margin: 0;
@@ -133,7 +132,6 @@
         let isZeroMode = false;
         let selectionTimeout;
         let hls; // لـ hls.js
-        let player; // لـ dash.js
 
         // fullscreen
         function enterFullscreen() {
@@ -186,22 +184,13 @@
             }, 3000);
         }
 
-        // تشغيل مع hls.js أو dash.js
+        // تشغيل مع hls.js وإزالة الترجمة
         function switchToChannel(index, fromZeroMode = false) {
             const channel = channels[index];
             if (channel) {
                 console.log('محاولة تشغيل:', channel.name, channel.stream); // للتشخيص
-                // تدمير اللاعب السابق
-                if (hls) { hls.destroy(); hls = null; }
-                if (player) { player.reset(); player = null; }
-                video.src = '';
-
-                if (channel.stream.endsWith('.mpd') && dashjs && dashjs.MediaPlayer) {
-                    // دعم DASH لـ MPD
-                    player = dashjs.MediaPlayer().create();
-                    player.initialize(video, channel.stream, true);
-                    player.on(dashjs.MediaPlayer.events.ERROR, (e) => console.error('خطأ DASH:', e));
-                } else if (Hls.isSupported()) {
+                if (Hls.isSupported()) {
+                    if (hls) hls.destroy();
                     hls = new Hls();
                     hls.loadSource(channel.stream);
                     hls.attachMedia(video);
@@ -209,10 +198,28 @@
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         console.error('خطأ HLS:', data); // عرض الأخطاء
                     });
+                    // إزالة الترجمة
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        const textTracks = video.textTracks;
+                        if (textTracks) {
+                            for (let i = 0; i < textTracks.length; i++) {
+                                textTracks[i].mode = 'disabled';
+                            }
+                        }
+                    });
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = channel.stream;
                     video.muted = false; // تفعيل الصوت
-                    video.addEventListener('loadedmetadata', () => video.play());
+                    video.addEventListener('loadedmetadata', () => {
+                        video.play();
+                        // إزالة الترجمة
+                        const textTracks = video.textTracks;
+                        if (textTracks) {
+                            for (let i = 0; i < textTracks.length; i++) {
+                                textTracks[i].mode = 'disabled';
+                            }
+                        }
+                    });
                 }
                 video.play().catch(e => console.error('خطأ التشغيل:', e));
                 currentChannelIndex = index;
