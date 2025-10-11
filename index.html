@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>مشغل قنوات تلفاز عبر الإنترنت</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> <!-- دعم HLS -->
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script> <!-- دعم DASH لـ MPD -->
     <style>
         body {
             margin: 0;
@@ -112,12 +113,12 @@
     <script>
         // القنوات مع روابط تجريبية صالحة (غيّرها بروابطك؛ الروابط الأصلية قد تحتاج VPN)
         const channelsData = [
-            { id: 1, name: 'الجزيرة', stream: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8' }, // تجريبي؛ غيّر إلى: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8'
-            { id: 2, name: 'الجزيرة مباشر', stream: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8' }, // غيّر إلى: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8'
-            { id: 3, name: 'عمان', stream: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8' }, // غيّر إلى: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8'
-            { id: 4, name: 'العربي', stream: 'https://live.kwikmotion.com/alaraby1live/alaraby_abr/manifest.mpd' }, // غيّر إلى: 'https://d1j4r34gq3qw9y.cloudfront.net/alarabiya/playlist.m3u8' (من مصادر 2025)
-            { id: 5, name: 'الاستقامة', stream: 'https://jmc-live.ercdn.net/alistiqama/alistiqama.m3u8' }, // هذا يعمل عادة
-            { id: 6, name: 'سبيستون', stream: 'https://shd-gcp-live.edgenextcdn.net/live/bitmovin-spacetoon/d8382fb9ab4b2307058f12c7ea90db54/index.m3u8' } // هذا صالح
+            { id: 1, name: 'الجزيرة', stream: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8' },
+            { id: 2, name: 'الجزيرة مباشر', stream: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8' },
+            { id: 3, name: 'عمان', stream: 'https://partneta.cdn.mgmlcdn.com/omantv/smil:omantv.stream.smil/chunklist.m3u8' },
+            { id: 4, name: 'العربي', stream: 'https://live.kwikmotion.com/alaraby1live/alaraby_abr/manifest.mpd' },
+            { id: 5, name: 'الاستقامة', stream: 'https://jmc-live.ercdn.net/alistiqama/alistiqama.m3u8' },
+            { id: 6, name: 'سبيستون', stream: 'https://shd-gcp-live.edgenextcdn.net/live/bitmovin-spacetoon/d8382fb9ab4b2307058f12c7ea90db54/index.m3u8' }
         ];
 
         const channels = channelsData.filter(c => c.stream && c.stream.trim() !== '');
@@ -132,6 +133,7 @@
         let isZeroMode = false;
         let selectionTimeout;
         let hls; // لـ hls.js
+        let player; // لـ dash.js
 
         // fullscreen
         function enterFullscreen() {
@@ -184,13 +186,22 @@
             }, 3000);
         }
 
-        // تشغيل مع hls.js
+        // تشغيل مع hls.js أو dash.js
         function switchToChannel(index, fromZeroMode = false) {
             const channel = channels[index];
             if (channel) {
                 console.log('محاولة تشغيل:', channel.name, channel.stream); // للتشخيص
-                if (Hls.isSupported()) {
-                    if (hls) hls.destroy();
+                // تدمير اللاعب السابق
+                if (hls) { hls.destroy(); hls = null; }
+                if (player) { player.reset(); player = null; }
+                video.src = '';
+
+                if (channel.stream.endsWith('.mpd') && dashjs && dashjs.MediaPlayer) {
+                    // دعم DASH لـ MPD
+                    player = dashjs.MediaPlayer().create();
+                    player.initialize(video, channel.stream, true);
+                    player.on(dashjs.MediaPlayer.events.ERROR, (e) => console.error('خطأ DASH:', e));
+                } else if (Hls.isSupported()) {
                     hls = new Hls();
                     hls.loadSource(channel.stream);
                     hls.attachMedia(video);
@@ -269,5 +280,4 @@
         video.addEventListener('click', e => e.preventDefault());
     </script>
 </body>
-
 </html>
