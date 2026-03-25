@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>مشغل قنوات تلفاز عبر الإنترنت</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> <!-- دعم HLS -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         body {
             margin: 0;
@@ -110,7 +110,6 @@
     </div>
 
     <script>
-        // القنوات مع روابط تجريبية صالحة (غيّرها بروابطك؛ الروابط الأصلية قد تحتاج VPN)
         const channelsData = [
             { id: 1, name: 'الجزيرة', stream: 'https://live-hls-web-aja.getaj.net/AJA/index.m3u8' },
             { id: 2, name: 'الجزيرة مباشر', stream: 'https://live-hls-web-ajm.getaj.net/AJM/index.m3u8' },
@@ -127,21 +126,19 @@
         const notification = document.getElementById('notification');
         const channelsMenu = document.getElementById('channels-menu');
         const menuChannels = document.getElementById('menu-channels');
+
         let currentChannelIndex = 0;
         let inputBuffer = '';
         let isZeroMode = false;
         let selectionTimeout;
-        let hls; // لـ hls.js
+        let hls;
 
-        // fullscreen
         function enterFullscreen() {
             if (videoContainer.requestFullscreen) videoContainer.requestFullscreen();
             else if (videoContainer.webkitRequestFullscreen) videoContainer.webkitRequestFullscreen();
             else if (videoContainer.msRequestFullscreen) videoContainer.msRequestFullscreen();
-            if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
         }
 
-        // بناء القائمة
         channels.forEach((channel, index) => {
             const div = document.createElement('div');
             div.className = 'channel-item';
@@ -150,27 +147,23 @@
             menuChannels.appendChild(div);
         });
 
-        // إشعار
         function showNotification(message) {
             notification.textContent = message;
             notification.style.display = 'block';
             setTimeout(() => notification.style.display = 'none', 2000);
         }
 
-        // عرض قائمة 0
         function showChannelsMenu() {
             channelsMenu.style.display = 'block';
             isZeroMode = true;
         }
 
-        // إخفاء قائمة
         function hideChannelsMenu() {
             channelsMenu.style.display = 'none';
             isZeroMode = false;
             clearTimeout(selectionTimeout);
         }
 
-        // اختيار في القائمة
         function selectChannelInMenu(index) {
             const items = document.querySelectorAll('.channel-item');
             items.forEach((item, i) => item.classList.toggle('selected', i === index));
@@ -178,39 +171,41 @@
             inputBuffer = channels[index].id.toString();
             clearTimeout(selectionTimeout);
             selectionTimeout = setTimeout(() => {
-                switchToChannel(index, true);
+                switchToChannel(index);
                 hideChannelsMenu();
                 inputBuffer = '';
             }, 3000);
         }
 
-        // تشغيل مع hls.js
-        function switchToChannel(index, fromZeroMode = false) {
+        function switchToChannel(index) {
             const channel = channels[index];
             if (channel) {
-                console.log('محاولة تشغيل:', channel.name, channel.stream); // للتشخيص
                 if (Hls.isSupported()) {
                     if (hls) hls.destroy();
-                    hls = new Hls();
+
+                    // 🔥 التحسين هنا
+                    hls = new Hls({
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                        liveSyncDuration: 3,
+                        liveMaxLatencyDuration: 10,
+                        enableWorker: true,
+                        lowLatencyMode: true
+                    });
+
                     hls.loadSource(channel.stream);
                     hls.attachMedia(video);
-                    video.muted = false; // تفعيل الصوت
-                    hls.on(Hls.Events.ERROR, (event, data) => {
-                        console.error('خطأ HLS:', data); // عرض الأخطاء
-                    });
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = channel.stream;
-                    video.muted = false; // تفعيل الصوت
-                    video.addEventListener('loadedmetadata', () => video.play());
                 }
-                video.play().catch(e => console.error('خطأ التشغيل:', e));
+
+                video.play().catch(e => console.error(e));
                 currentChannelIndex = index;
                 showNotification(`تم التنقل إلى ${channel.name}`);
                 video.addEventListener('loadeddata', enterFullscreen, { once: true });
             }
         }
 
-        // التنقل
         document.addEventListener('keydown', (e) => {
             if (isZeroMode) {
                 if (/[1-6]/.test(e.key)) {
@@ -225,47 +220,24 @@
                 } else if (e.key === 'Escape') {
                     hideChannelsMenu();
                     inputBuffer = '';
-                    e.preventDefault();
                 }
             } else {
                 if (e.key === 'ArrowRight') {
                     currentChannelIndex = (currentChannelIndex + 1) % channels.length;
-                    switchToChannel(currentChannelIndex, false);
-                    e.preventDefault();
+                    switchToChannel(currentChannelIndex);
                 } else if (e.key === 'ArrowLeft') {
                     currentChannelIndex = (currentChannelIndex - 1 + channels.length) % channels.length;
-                    switchToChannel(currentChannelIndex, false);
-                    e.preventDefault();
+                    switchToChannel(currentChannelIndex);
                 } else if (e.key === 'Enter') {
-                    switchToChannel(currentChannelIndex, false);
-                    e.preventDefault();
+                    switchToChannel(currentChannelIndex);
                 } else if (e.key === '0') {
-                    inputBuffer = '0';
                     showChannelsMenu();
-                    e.preventDefault();
-                } else if (/[1-6]/.test(e.key)) {
-                    inputBuffer += e.key;
-                    setTimeout(() => {
-                        const channelNum = parseInt(inputBuffer);
-                        const channel = channels.find(c => c.id === channelNum);
-                        if (channel) {
-                            const index = channels.indexOf(channel);
-                            switchToChannel(index, false);
-                        }
-                        inputBuffer = '';
-                    }, 2000);
-                    e.preventDefault();
                 }
-            }
-            if (e.key === 'Escape') {
-                if (document.exitFullscreen) document.exitFullscreen();
             }
         });
 
-        // بدء بالأولى
-        if (channels.length > 0) switchToChannel(0, false);
+        if (channels.length > 0) switchToChannel(0);
 
-        // منع النقر
         video.addEventListener('click', e => e.preventDefault());
     </script>
 </body>
